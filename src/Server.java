@@ -17,6 +17,10 @@ import javax.swing.event.ChangeListener;
 
 public class Server extends JFrame implements ActionListener {
 
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
 	// RTP variables:
 	// ----------------
 	DatagramSocket RTPsocket; // socket to be used to send and receive UDP
@@ -41,6 +45,7 @@ public class Server extends JFrame implements ActionListener {
 	JSlider lossSlider = new JSlider(LOSS_MIN, LOSS_MAX, LOSS_INIT);
 	JSlider xorSlider = new JSlider(XOR_MIN, XOR_MAX, XOR_INIT);
 	JLabel label;
+	JLabel serverConfig;
 		
 	// Package Lost
 	private static int LOSS_RATE = 0;
@@ -124,10 +129,15 @@ public class Server extends JFrame implements ActionListener {
 		xorSlider.setPaintLabels(true);
 		xorSlider.addChangeListener(new SliderListener());
 		
+		serverConfig = new JLabel("loss rate: ["+ LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
+		
 		sliderPanel.setLayout(new BorderLayout());
-		sliderPanel.add(lossSlider, BorderLayout.CENTER);
-		sliderPanel.add(xorSlider, BorderLayout.SOUTH);
+		sliderPanel.add(serverConfig, BorderLayout.SOUTH);
+		sliderPanel.add(lossSlider, BorderLayout.NORTH);
+		sliderPanel.add(xorSlider, BorderLayout.CENTER);
 		getContentPane().add(sliderPanel, BorderLayout.SOUTH);
+		getContentPane().setPreferredSize(new Dimension(300, 150));
+		
 	}
 
 	// ------------------------------------
@@ -357,8 +367,8 @@ public class Server extends JFrame implements ActionListener {
 	        		LOSS_RATE = (int)source.getValue();
 	            if (source.equals(xorSlider))
 	            	GROUP_SIZE = (int)source.getValue();
+	            serverConfig.setText("loss rate: ["+ LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
 	        }    
 	    }
 	}
 }
-
