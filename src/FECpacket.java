@@ -1,7 +1,11 @@
-import java.nio.Buffer;
-
 public class FECpacket {
 	int FEC_group = 500; 	// Anzahl an Medienpaketen für eine Gruppe
+	
+    final static int HEADER_SIZE = 8;
+	public byte[] header;	//Bitstream of header
+	
+    final static int BODY_SIZE = 24;
+    public byte[] body;		//Bitstream of the body
 	
 	// size of the RTP payload
 	public int payload_size;
@@ -9,15 +13,6 @@ public class FECpacket {
 	public byte[] FEC_TempPackage;
 	int dataLength = 0;
 	int counter = 0;
-	
-	public FECpacket () {};
-	
-	public FECpacket (byte[] data, int data_length) {
-		this (new RTPpacket(data, data_length));
-	};
-	
-	public FECpacket (RTPpacket rtPpacket) {};
-	
 	
 	//##########
 	// Sender
@@ -40,9 +35,12 @@ public class FECpacket {
 	
 	// holt FEC-Paket (Länge -> längstes Medienpaket)
 	int getdata(byte[] data) { 
-		RTPpacket fecPacket = new RTPpacket(127, counter, FEC_group, data, dataLength);
-		fecPacket.getlength();
-		return fecPacket.getlength();
+        //construct the packet = header + body
+        System.arraycopy(header, 0, data, 0, HEADER_SIZE);
+        System.arraycopy(body, 0, data, HEADER_SIZE, BODY_SIZE);
+
+        //return total size of the packet
+        return (BODY_SIZE + HEADER_SIZE);
 	}
 	
 	//#######################################################
