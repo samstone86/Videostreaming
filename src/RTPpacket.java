@@ -1,196 +1,88 @@
 import java.util.Arrays;
 
-public class RTPpacket {
+public class FECpacket {
+	int FEC_group = 500; 	// Anzahl an Medienpaketen für eine Gruppe
+	
+    final static int HEADER_SIZE = 10;
+	public byte[] header;	//Bitstream of header
 
-	// size of the RTP header:
-	static int HEADER_SIZE = 12;
-
-	// Fields that compose the RTP header
-	public int Version;
-	public int Padding;
-	public int Extension;
-	public int CC;
-	public int Marker;
-	public int PayloadType;
-	public int SequenceNumber;
-	public int TimeStamp;
-	public int Ssrc;
-
-	// Bitstream of the RTP header
-	public byte[] header;
-
+	
 	// size of the RTP payload
 	public int payload_size;
-	// Bitstream of the RTP payload
+	public byte[] FEC_Package;
+	public byte[] FEC_TempPackage;
+	int dataLength = 0;
+	int counter = 0;
+	
 	public byte[] payload;
-
-	// --------------------------
-	// Constructor of an RTPpacket object from header fields and payload
-	// bitstream
-	// --------------------------
-	public RTPpacket(int PType, int Framenb, int Time, byte[] data, int data_length) {
-		// fill by default header fields:
-		Version = 2;
-		Padding = 0;
-		Extension = 0;
-		CC = 0;
-		Marker = 0;
-		Ssrc = 0;
-
-		// fill changing header fields:
-		SequenceNumber = Framenb;
-		TimeStamp = Time;
-		PayloadType = PType;
-
-		// build the header bistream:
-		// --------------------------
-		header = new byte[HEADER_SIZE];
-
-		// fill the header array of byte with RTP header fields
-
-		header[0] = (byte) (Version << (7 - 1));
-		header[0] = (byte) (header[0] | Padding << (7 - 2));
-		header[0] = (byte) (header[0] | Extension << (7 - 3));
-		header[0] = (byte) (header[0] | CC);
-
-		header[1] = (byte) (Marker << 7);
-		header[1] = (byte) (header[1] | PayloadType);
-
-		header[2] = (byte) (SequenceNumber >> 8);
-		header[3] = (byte) (SequenceNumber & 0xFF);
-
-		header[4] = (byte) (TimeStamp >> 24);
-		header[5] = (byte) (TimeStamp >> 16);
-		header[6] = (byte) (TimeStamp >> 8);
-		header[7] = (byte) (TimeStamp & 0xFF);
-
-		// fill the payload bitstream:
-		// --------------------------
-		payload_size = data_length;
-		payload = new byte[data_length];
-
-		// fill payload array of byte from data (given in parameter of the
-		// constructor)
-		payload = Arrays.copyOf(data, payload_size);
+	
+	//##########
+	// Sender
+	//##########
+	
+	// nimmt Nutzdaten entgegen
+	void setdata(byte[] data, int data_length) {
+		
 	}
-
-	// --------------------------
-	// Constructor of an RTPpacket object from the packet bistream
-	// --------------------------
-	public RTPpacket(byte[] packet, int packet_size) {
-		// fill default fields:
-		Version = 2;
-		Padding = 0;
-		Extension = 0;
-		CC = 0;
-		Marker = 0;
-		Ssrc = 0;
-
-		// check if total packet size is lower than the header size
-		if (packet_size >= HEADER_SIZE) {
-			// get the header bitsream:
-			header = new byte[HEADER_SIZE];
-			for (int i = 0; i < HEADER_SIZE; i++)
-				header[i] = packet[i];
-
-			// get the payload bitstream:
-			payload_size = packet_size - HEADER_SIZE;
-			payload = new byte[payload_size];
-			for (int i = HEADER_SIZE; i < packet_size; i++)
-				payload[i - HEADER_SIZE] = packet[i];
-
-			// interpret the changing fields of the header:
-			PayloadType = header[1] & 127;
-			SequenceNumber = unsigned_int(header[3]) + 256 * unsigned_int(header[2]);
-			TimeStamp = unsigned_int(header[7]) + 256 * unsigned_int(header[6]) + 65536 * unsigned_int(header[5])
-					+ 16777216 * unsigned_int(header[4]);
+	
+	// holt FEC-Paket (Länge -> längstes Medienpaket) int
+	int getdata(byte[] data) { 
+		
+		if (this.dataLength < data.length) {
+			this.dataLength = data.length;
+			FEC_TempPackage = Arrays.copyOf(data, dataLength);
+			FEC_Package = Arrays.copyOf(FEC_TempPackage, dataLength + HEADER_SIZE);
 		}
-	}
 
-	// --------------------------
-	// getpayload: return the payload bistream of the RTPpacket and its size
-	// --------------------------
-	public int getpayload(byte[] data) {
-
-		for (int i = 0; i < payload_size; i++)
-			data[i] = payload[i];
-
-		return (payload_size);
-	}
-
-	// --------------------------
-	// getpayload_length: return the length of the payload
-	// --------------------------
-	public int getpayload_length() {
-		return (payload_size);
-	}
-
-	// --------------------------
-	// getlength: return the total length of the RTP packet
-	// --------------------------
-	public int getlength() {
-		return (payload_size + HEADER_SIZE);
-	}
-
-	// --------------------------
-	// getpacket: returns the packet bitstream and its length
-	// --------------------------
-	public int getpacket(byte[] packet) {
-		// construct the packet = header + payload
-		for (int i = 0; i < HEADER_SIZE; i++)
-			packet[i] = header[i];
-		for (int i = 0; i < payload_size; i++)
-			packet[i + HEADER_SIZE] = payload[i];
-
+		for (int i = 1; i <= dataLength; i++) {
+			FEC_Package[i] = (byte) (FEC_Package[i]^data[i]);
+		}
+		
 		// return total size of the packet
-		return (payload_size + HEADER_SIZE);
-	}
-
-	// --------------------------
-	// gettimestamp
-	// --------------------------
-
-	public int gettimestamp() {
-		return (TimeStamp);
-	}
-
-	// --------------------------
-	// getsequencenumber
-	// --------------------------
-	public int getsequencenumber() {
-		return (SequenceNumber);
-	}
-
-	// --------------------------
-	// getpayloadtype
-	// --------------------------
-	public int getpayloadtype() {
-		return (PayloadType);
-	}
-
-	// --------------------------
-	// print headers without the SSRC
-	// --------------------------
-	public void printheader() {
-		// TO DO: uncomment
-		for (int i = 0; i < (HEADER_SIZE - 4); i++) {
-			for (int j = 7; j >= 0; j--)
-				if (((1 << j) & header[i]) != 0)
-					System.out.print("1");
-				else
-					System.out.print("0");
-			System.out.print(" ");
+		return (dataLength + HEADER_SIZE);
+		
+		/*		
+		if (this.dataLength < data.length) {
+			this.dataLength = data.length;
+			FEC_TempPackage = FEC_Package.clone();
+			FEC_Package = new byte[data.length];
+			FEC_Package = FEC_TempPackage.clone();
 		}
-
-		System.out.println();
+		
+		for (int i = 1; i <= data.length; i++) {
+			FEC_Package[i] = (byte) (FEC_Package[i]^data[i]);
+		}		
+		*/
 	}
-
-	// return the unsigned value of 8-bit integer nb
-	static int unsigned_int(int nb) {
-		if (nb >= 0)
-			return (nb);
-		else
-			return (256 + nb);
+	
+	//#######################################################
+	// Empfänger
+	// getrennete Puffer für Mediendaten und FEC
+	// Puffergröße sollte Vielfaches der Gruppengröße sein
+	//#######################################################
+	
+	// UDP-Payload, Nr. des Bildes bzw. TRP-SN
+	void rcvdata(int nr, byte[] data) {	
+		
 	}
-
+	
+	//FEC-Daten
+	void rcvfec(int nr, byte[] data) {	
+		
+	}
+	
+	// übergibt korrigiertes Paket oder Fehler (null)
+	byte[] getjpg(int nr) {
+		return null;		
+	}
 }
+
+/*
+extra head am anfang gruppengröße in erstes bit 
+
+xor aus allen gruppenmitgliedern
+
+payload 127
+
+
+*/
