@@ -18,11 +18,15 @@ public class FECpacket {
 	// Sender
 	//##########
 	
-	// nimmt Nutzerdaten entgegen
+	// nimmt Nutzdaten entgegen
 	void setdata(byte[] data, int data_length) {
 		
-		if (this.dataLength < data_length) {
-			this.dataLength = data_length;
+	}
+	
+	// holt FEC-Paket (Länge -> längstes Medienpaket) int
+	void getdata(byte[] data) { 
+		if (this.dataLength < data.length) {
+			this.dataLength = data.length;
 			FEC_TempPackage = FEC_Package.clone();
 			FEC_Package = new byte[data.length];
 			FEC_Package = FEC_TempPackage.clone();
@@ -31,16 +35,6 @@ public class FECpacket {
 		for (int i = 1; i <= data.length; i++) {
 			FEC_Package[i] = (byte) (FEC_Package[i]^data[i]);
 		}		
-	}
-	
-	// holt FEC-Paket (Länge -> längstes Medienpaket)
-	int getdata(byte[] data) { 
-        //construct the packet = header + body
-        System.arraycopy(header, 0, data, 0, HEADER_SIZE);
-        System.arraycopy(body, 0, data, HEADER_SIZE, BODY_SIZE);
-
-        //return total size of the packet
-        return (BODY_SIZE + HEADER_SIZE);
 	}
 	
 	//#######################################################
