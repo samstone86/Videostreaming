@@ -1,11 +1,11 @@
+import java.util.Arrays;
+
 public class FECpacket {
 	int FEC_group = 500; 	// Anzahl an Medienpaketen für eine Gruppe
 	
-    final static int HEADER_SIZE = 8;
+    final static int HEADER_SIZE = 10;
 	public byte[] header;	//Bitstream of header
-	
-    final static int BODY_SIZE = 24;
-    public byte[] body;		//Bitstream of the body
+
 	
 	// size of the RTP payload
 	public int payload_size;
@@ -13,6 +13,8 @@ public class FECpacket {
 	public byte[] FEC_TempPackage;
 	int dataLength = 0;
 	int counter = 0;
+	
+	public byte[] payload;
 	
 	//##########
 	// Sender
@@ -24,7 +26,19 @@ public class FECpacket {
 	}
 	
 	// holt FEC-Paket (Länge -> längstes Medienpaket) int
-	void getdata(byte[] data) { 
+	int getdata(byte[] data) { 
+		
+		if (this.dataLength < data.length) {
+			this.dataLength = data.length;
+			FEC_TempPackage = Arrays.copyOf(data, data.length);
+			FEC_Package = Arrays.copyOf(FEC_TempPackage, data.length + HEADER_SIZE);
+		}
+
+		// return total size of the packet
+		return (data.length + HEADER_SIZE);
+		
+		/*
+		
 		if (this.dataLength < data.length) {
 			this.dataLength = data.length;
 			FEC_TempPackage = FEC_Package.clone();
@@ -35,6 +49,7 @@ public class FECpacket {
 		for (int i = 1; i <= data.length; i++) {
 			FEC_Package[i] = (byte) (FEC_Package[i]^data[i]);
 		}		
+		*/
 	}
 	
 	//#######################################################
