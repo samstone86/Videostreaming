@@ -8,10 +8,9 @@ public class FECpacket {
 
 	
 	// size of the RTP payload
-	public int payload_size;
 	public byte[] FEC_Package;
-	public byte[] FEC_TempPackage;
-	int dataLength = 0;
+	public byte[] FEC_TmpPackage;
+	public int payload_size = 0;
 	int counter = 0;
 	
 	public byte[] payload;
@@ -22,23 +21,36 @@ public class FECpacket {
 	
 	// nimmt Nutzdaten entgegen
 	void setdata(byte[] data, int data_length) {
+		if (this.payload_size < data_length) {
+			this.payload_size = data_length;
+			System.arraycopy(FEC_Package, 0, FEC_TmpPackage, 0, payload_size);
+			FEC_Package = new byte[payload_size];
+			System.arraycopy(FEC_TmpPackage, 0, FEC_Package, 0, payload_size);
+		}
+		System.arraycopy(data, 0, FEC_TmpPackage, 0, payload_size);
 		
+		if (counter > 0) {
+			for (int i = 1; i <= payload_size; i++) {
+				FEC_Package[i] = (byte) (FEC_Package[i]^FEC_TmpPackage[i]);
+			}
+		}
+		counter++;
 	}
 	
 	// holt FEC-Paket (Länge -> längstes Medienpaket) int
 	int getdata(byte[] data) { 
+		//counter reset
+		counter = 0;
 		
-		if (this.dataLength < data.length) {
-			this.dataLength = data.length;
-			FEC_TempPackage = Arrays.copyOf(data, data.length);
-			FEC_Package = Arrays.copyOf(FEC_TempPackage, data.length + HEADER_SIZE);
-		}
-
-		// return total size of the packet
-		return (data.length + HEADER_SIZE);
 		
-		/*
 		
+		
+		
+		//nach aufarbeiten des Rückgabewertes FEC_Package 0 initialisieren 
+		FEC_Package = new byte[0];
+		
+		return 0;
+		/*		
 		if (this.dataLength < data.length) {
 			this.dataLength = data.length;
 			FEC_TempPackage = FEC_Package.clone();
