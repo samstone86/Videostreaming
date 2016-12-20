@@ -52,6 +52,7 @@ public class Server extends JFrame implements ActionListener {
 	
 	// XOR
 	static int GROUP_SIZE = 2;
+	int groupSize = 0;
 
 	// Video variables:
 	// ----------------
@@ -244,7 +245,21 @@ public class Server extends JFrame implements ActionListener {
 			try {
 				// get next frame to send from the video, as well as its size
 				int image_length = video.getnextframe(curImage);
-
+				
+				
+				
+				FECpacket fec_pkg = new FECpacket();
+				
+				if (groupSize < GROUP_SIZE) {
+					fec_pkg.setdata(curImage, image_length);
+					groupSize++;
+				} else {
+					fec_pkg.getdata(curImage);
+					groupSize = 0;
+				}
+				
+				
+				
 				// Builds an RTPpacket object containing the frame
 				RTPpacket rtp_packet = new RTPpacket(MJPEG_TYPE, imagenb, imagenb * FRAME_PERIOD, curImage, image_length);
 
@@ -264,7 +279,7 @@ public class Server extends JFrame implements ActionListener {
 				
 				}	// Package loss end
 				
-				// System.out.println("Send frame #"+imagenb);
+				
 				// print the header bitstream
 				rtp_packet.printheader();
 
