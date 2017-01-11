@@ -34,11 +34,11 @@ public class Server extends JFrame implements ActionListener {
 	// Slider values
 	static final int LOSS_MIN = 0;
 	static final int LOSS_MAX = 100;
-	static final int LOSS_INIT = 0; 
-	
+	static final int LOSS_INIT = 0;
+
 	static final int XOR_MIN = 2;
 	static final int XOR_MAX = 20;
-	static final int XOR_INIT = 2; 
+	static final int XOR_INIT = 2;
 	// GUI:
 	// ----------------
 	JPanel sliderPanel = new JPanel();
@@ -46,17 +46,17 @@ public class Server extends JFrame implements ActionListener {
 	JSlider xorSlider = new JSlider(XOR_MIN, XOR_MAX, XOR_INIT);
 	JLabel label;
 	JLabel serverConfig;
-		
+
 	// Package Lost
 	private static int LOSS_RATE = 0;
-	
+
 	// XOR
 	static int GROUP_SIZE = 2;
 	int groupSize = 0;
 
 	// Video variables:
 	// ----------------
-	int imagenb = 0; // image nb of the image currently transmitted
+	int imgNumber = 0; // image nb of the image currently transmitted
 	VideoStream video; // VideoStream object used to access video frames
 	static int MJPEG_TYPE = 26; // RTP payload type for MJPEG video
 	static int FRAME_PERIOD = 40; // Frame period of the video to stream, in ms
@@ -117,28 +117,28 @@ public class Server extends JFrame implements ActionListener {
 		// GUI:
 		label = new JLabel("Send frame #        ", JLabel.CENTER);
 		getContentPane().add(label, BorderLayout.CENTER);
-		
+
 		lossSlider.setMajorTickSpacing(20);
 		lossSlider.setMinorTickSpacing(1);
 		lossSlider.setPaintTicks(true);
 		lossSlider.setPaintLabels(true);
 		lossSlider.addChangeListener(new SliderListener());
-		
+
 		xorSlider.setMajorTickSpacing(2);
 		xorSlider.setMinorTickSpacing(1);
 		xorSlider.setPaintTicks(true);
 		xorSlider.setPaintLabels(true);
 		xorSlider.addChangeListener(new SliderListener());
-		
-		serverConfig = new JLabel("loss rate: ["+ LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
-		
+
+		serverConfig = new JLabel("loss rate: [" + LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
+
 		sliderPanel.setLayout(new BorderLayout());
 		sliderPanel.add(serverConfig, BorderLayout.SOUTH);
 		sliderPanel.add(lossSlider, BorderLayout.NORTH);
 		sliderPanel.add(xorSlider, BorderLayout.CENTER);
 		getContentPane().add(sliderPanel, BorderLayout.SOUTH);
 		getContentPane().setPreferredSize(new Dimension(300, 150));
-		
+
 	}
 
 	// ------------------------------------
@@ -238,30 +238,17 @@ public class Server extends JFrame implements ActionListener {
 	public void actionPerformed(ActionEvent e) {
 
 		// if the current image nb is less than the length of the video
-		if (imagenb < VIDEO_LENGTH) {
+		if (imgNumber < VIDEO_LENGTH) {
 			// update current imagenb
-			imagenb++;
+			imgNumber++;
 
 			try {
 				// get next frame to send from the video, as well as its size
 				int image_length = video.getnextframe(curImage);
-				
-				
-				
-				FECpacket fec_pkg = new FECpacket();
-				
-				if (groupSize < GROUP_SIZE) {
-					fec_pkg.setdata(curImage, image_length);
-					groupSize++;
-				} else {
-					fec_pkg.getdata(curImage);
-					groupSize = 0;
-				}
-				
-				
-				
+
 				// Builds an RTPpacket object containing the frame
-				RTPpacket rtp_packet = new RTPpacket(MJPEG_TYPE, imagenb, imagenb * FRAME_PERIOD, curImage, image_length);
+				RTPpacket rtp_packet = new RTPpacket(MJPEG_TYPE, imgNumber, imgNumber * FRAME_PERIOD, curImage,
+						image_length);
 
 				// get to total length of the full rtp packet to send
 				int packet_length = rtp_packet.getlength();
@@ -270,23 +257,41 @@ public class Server extends JFrame implements ActionListener {
 				// bytes
 				byte[] packet_bits = new byte[packet_length];
 				rtp_packet.getpacket(packet_bits);
-				
+
 				// Package loss
+				senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
 				if (ThreadLocalRandom.current().nextInt(LOSS_MIN, LOSS_MAX + 1) > LOSS_RATE) {
 					// send the packet as a DatagramPacket over the UDP socket
-					senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
+
 					RTPsocket.send(senddp);
-				
-				}	// Package loss end
-				
-				
+					System.out.println("sende RTP Paket");
+				} // Package loss end
+
+				FECpacket fec_pkg = new FECpacket(GROUP_SIZE, imgNumber);
+
+				if (groupSize < GROUP_SIZE) {
+					fec_pkg.setdata(curImage, image_length);
+					groupSize++;
+				} else {
+					int FECPackage_length = fec_pkg.getLength();
+					byte[] fecPackagePlusHeader = new byte[FECPackage_length];
+					fec_pkg.getdata(fecPackagePlusHeader);
+					System.out.println("sende FEC Paket");
+					senddp = new DatagramPacket(fecPackagePlusHeader, FECPackage_length, ClientIPAddr, RTP_dest_port);
+					RTPsocket.send(senddp);
+					groupSize = 0;
+				}
+
+				System.out.println("Send frame #" + imgNumber);
+
 				// print the header bitstream
 				rtp_packet.printheader();
 
 				// update GUI
-				label.setText("Send frame #" + imagenb);
+				label.setText("Send frame #" + imgNumber);
 			} catch (Exception ex) {
 				System.out.println("actionPerformed Exception caught: " + ex);
+				ex.printStackTrace();
 				System.exit(0);
 			}
 		} else {
@@ -375,15 +380,15 @@ public class Server extends JFrame implements ActionListener {
 	}
 
 	class SliderListener implements ChangeListener {
-	    public void stateChanged(ChangeEvent e) {
-	        JSlider source = (JSlider)e.getSource();
-	        if (!source.getValueIsAdjusting()) {
-	        	if (source.equals(lossSlider))
-	        		LOSS_RATE = (int)source.getValue();
-	            if (source.equals(xorSlider))
-	            	GROUP_SIZE = (int)source.getValue();
-	            serverConfig.setText("loss rate: ["+ LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
-	        }    
-	    }
+		public void stateChanged(ChangeEvent e) {
+			JSlider source = (JSlider) e.getSource();
+			if (!source.getValueIsAdjusting()) {
+				if (source.equals(lossSlider))
+					LOSS_RATE = (int) source.getValue();
+				if (source.equals(xorSlider))
+					GROUP_SIZE = (int) source.getValue();
+				serverConfig.setText("loss rate: [" + LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
+			}
+		}
 	}
 }

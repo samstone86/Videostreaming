@@ -1,4 +1,3 @@
-
 /* ------------------
    Client
    usage: java Client [Server hostname] [Server RTSP listening port] [Video file requested]
@@ -8,6 +7,7 @@ import java.io.*;
 import java.net.*;
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.List;
 import java.awt.*;
 import java.awt.event.*;
 import javax.swing.*;
@@ -72,11 +72,29 @@ public class Client {
 
 	int statisticERTPNr; // Expected Sequence number of RTP messages within the session
 	int statisticHighSeqNr; // Highest sequence number received in session
+	
+	static int anzPakete = 0;
+	static int count = 0;
+	static int lastRecv = 0;
+	static int expectRecv = 0;
+	
+	// Lists to store FEC packages and RTP packages
+	public static List<byte[]> rtpBuffer = new ArrayList<byte[]>();
+	public static List<Integer> rtpBufferCount = new ArrayList<Integer>();
+	public static List<byte[]> fecBuffer = new ArrayList<byte[]>();
+	public static List<Integer> fecBufferCount = new ArrayList<Integer>();
+	
+	List<Integer> recvPackages = new ArrayList<Integer>();
+	List<Integer> expectedPackages = new ArrayList<Integer>();
 
 	// Video constants:
 	// ------------------
 	static int MJPEG_TYPE = 26; // RTP payload type for MJPEG video
-
+	static int FEC_PACKAGE = 127; // RTP payload type for FEC packages
+	
+	// counter for jpegs
+	static int imgCount = 1;
+	
 	// --------------------------
 	// Constructor
 	// --------------------------
@@ -134,7 +152,7 @@ public class Client {
 		// init timer
 		// --------------------------
 		timer = new Timer(20, new timerListener());
-		timer.setInitialDelay(0);
+		timer.setInitialDelay(2000);
 		timer.setCoalesce(true);
 
 		// allocate enough memory for the buffer used to receive data from the
@@ -359,6 +377,28 @@ public class Client {
 				// create an RTPpacket object from the DP
 				RTPpacket rtp_packet = new RTPpacket(rcvdp.getData(), rcvdp.getLength());
 
+				// create an FECpacket to recive FEC data
+				FECpacket fec_pkg = new FECpacket();
+				if (rtp_packet.PayloadType == 127) {
+					System.out.println("Received fec paket");
+					// Verarbeitung FEC paket, also rcvfec
+					fec_pkg.rcvfec(rtp_packet.SequenceNumber, rtp_packet.payload);
+
+				} else {
+					fec_pkg.rcvdata(rtp_packet.SequenceNumber, rtp_packet.payload);
+					recvPackages.add(rtp_packet.getsequencenumber());
+					expectedPackages.add(++count);
+					if (expectedPackages != null && !expectedPackages.isEmpty()) {
+						expectRecv = expectedPackages.get(expectedPackages.size() - 1);
+					}
+					if (recvPackages != null && !recvPackages.isEmpty()) {
+						lastRecv = recvPackages.get(recvPackages.size() - 1);
+					}
+					anzPakete = recvPackages.size();
+					System.out.println("Expected:" + expectRecv);
+					System.out.println("Drin:" + lastRecv);
+				}				
+				
 				// Statistics
 				int seqNr = rtp_packet.getsequencenumber();
 
@@ -373,6 +413,9 @@ public class Client {
 				int payload_length = rtp_packet.getpayload_length();
 				byte[] payload = new byte[payload_length];
 				rtp_packet.getpayload(payload);
+				
+				byte[] jpg = new byte[fec_pkg.payload_size];
+				jpg = fec_pkg.getjpg(imgCount++);
 				
 				// Statistics
 				statisticERTPNr++;
@@ -394,8 +437,13 @@ public class Client {
 
 				// get an Image object from the payload bitstream
 				Toolkit toolkit = Toolkit.getDefaultToolkit();
-				Image image = toolkit.createImage(payload, 0, payload_length);
-
+				Image image;
+				
+				if (rtp_packet.getpayloadtype() == 127) {
+					image = toolkit.createImage(jpg, 0, jpg.length);
+				} else {
+					image = toolkit.createImage(payload, 0, payload_length);
+				}
 				// display the image as an ImageIcon object
 				icon = new ImageIcon(image);
 				iconLabel.setIcon(icon);
