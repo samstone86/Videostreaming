@@ -1,183 +1,156 @@
-public class FECpacket {
-	int FEC_group = 500; // Anzahl an Medienpaketen für eine Gruppe
+import java.util.ArrayList;
+import java.util.List;
 
-	final static int HEADER_SIZE = 12; // size of FEC header:
-	public byte[] header; // Bitstream of header
+// 0                   1                   2                   3
+// 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |E|L|P|X|  cc   |M| PT recovery |            SN Base          |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                    timeStamp recovery                       |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                       length recovery                       |
+// +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 
-	public int payload_size; // size of the RTP payload
-	public byte[] payload; // Bitstream of the FEC payload
+/**
+ * FEC Class with single level protection got two constructors. One with a given
+ * RTPPacket-list and another with byte[] array.
+ */
 
-	public byte[] FEC_Package; // Bitstream of the FEC Package
-	public byte[] FEC_TempPackage; // Bitstream of the temporary FEC Package
+class FECpacket {
 
-	int counter = 0; // dont XOR at first call
+	static int PayloadType = 127;
+	static int SequenceNumber = 0;
+	static int HEADER_SIZE = 3;
 
-	int dataLength = 0;
+	// Bitstream of the RTP header
+	public byte[] RTP_header;
+	public byte[] FEC_Header;
+	public byte[] payload;
+	public int payloadSize;
 
-	// Fields that compose the RTP header, used for compatibility
-	public int Version;
-	public int Padding;
-	public int Extension;
-	public int CC;
-	public int Marker;
-	public int PayloadType;
-	public int SequenceNumber; // smallest SeqNr of a media package
-	public int TimeStamp;
-	public int Ssrc;
+	int k = 0;
 
-	public FECpacket() {
+	List<RTPpacket> fecBuffer = new ArrayList<>();
+	Interface sender;
+
+	public FECpacket(List<RTPpacket> RTPpakets) {
+		payload = XOR(RTPpakets);
+		RTP_header = RTPpacket.getHeader(PayloadType, 0, 0);
+		FEC_Header = addSequenceNumber(RTPpakets.size(), RTPpakets.get(RTPpakets.size() - 1).SequenceNumber);
 
 	}
 
-	public FECpacket(int packageSizeFEC, int imgNumber) {
-		Version = 2;
-		Padding = 0;
-		Extension = 0;
-		CC = 0;
-		Marker = 0;
-		Ssrc = 0;
-		PayloadType = 127;
+	public FECpacket(byte[] packet) {
 
-		FEC_group = packageSizeFEC;
-		SequenceNumber = imgNumber; // number of first rtp paket belonging to group
+		// RTP Header
+		RTP_header = new byte[RTPpacket.HEADER_SIZE];
+		System.arraycopy(packet, 0, RTP_header, 0, RTP_header.length);
 
-		header = new byte[HEADER_SIZE];
+		// FEC Header
+		FEC_Header = new byte[HEADER_SIZE];
+		System.arraycopy(packet, RTP_header.length, FEC_Header, 0, HEADER_SIZE);
 
-		payload_size = 0;
-		FEC_TempPackage = new byte[payload_size];
-		FEC_Package = new byte[payload_size];
+		// Payload
+		int fecPayloadSize = packet.length - RTP_header.length - HEADER_SIZE;
+		payload = new byte[fecPayloadSize];
+		System.arraycopy(packet, RTP_header.length + HEADER_SIZE, payload, 0,
+				packet.length - (RTP_header.length + HEADER_SIZE));
 
-		// fill the header array of byte with FEC header fields
-		header[0] = (byte) (Version << 6); // V
-		header[0] = (byte) (header[0] | Padding << 5); // P
-		header[0] = (byte) (header[0] | Extension << 4); // X
-		header[0] = (byte) (header[0] | CC); // X
+		k = getInt(FEC_Header[0]);
+		SequenceNumber = getInt(FEC_Header[2]) + 256 * getInt(FEC_Header[1]);
 
-		header[1] = (byte) (Marker << 7); // M
-		header[1] = (byte) (header[1] | PayloadType); // PT
-
-		header[2] = (byte) (SequenceNumber >> 8);
-		header[3] = (byte) (SequenceNumber & 0xFF);
 	}
 
-	// ##########
-	// Sender
-	// ##########
+	// Function to store in FEC Header
+	private byte[] addSequenceNumber(int k, int seqNr) {
+		byte[] header = new byte[HEADER_SIZE];
+		header[0] = (byte) k;
+		header[1] = (byte) ((seqNr & 0x0000ff00) >> 8);
+		header[2] = (byte) (seqNr & 0x000000ff);
+		return header;
+	}
 
-	// nimmt Nutzdaten entgegen
-	void setdata(byte[] data, int data_length) {
-		if (this.payload_size < data_length) {
-			this.payload_size = data_length;
-			FEC_Package = new byte[payload_size];
-			FEC_TempPackage = new byte[payload_size];
-			System.arraycopy(FEC_Package, 0, FEC_TempPackage, 0, payload_size);
-			System.arraycopy(FEC_TempPackage, 0, FEC_Package, 0, payload_size);
+	public static byte[] getPayloadLength(byte[] payload1, byte[] payload2) {
+
+		int maxLength = 0;
+		
+		if (payload1.length >= payload2.length)
+			maxLength = payload1.length;
+		else if (payload1.length < payload2.length)
+			maxLength = payload2.length;
+				
+		
+		byte[] newPayload = new byte[maxLength];
+		
+		for (int i = 0; i < payload1.length; i++) {
+			newPayload[i] = (byte) (payload1[i] ^ newPayload[i]);
 		}
-		System.arraycopy(data, 0, FEC_TempPackage, 0, payload_size);
+		for (int i = 0; i < payload2.length; i++) {
+			newPayload[i] = (byte) (payload2[i] ^ newPayload[i]);
+		}
+		return newPayload;
+	}
 
-		if (counter > 0) {
-			for (int i = 1; i <= payload_size; i++) {
-				FEC_Package[i] = (byte) (FEC_Package[i] ^ FEC_TempPackage[i]);
+	public byte[] XOR(List<RTPpacket> rtpPackets) {
+
+		byte[] payload = new byte[payloadSize];
+
+		for (RTPpacket rtpPaket : rtpPackets) {
+			payload = getPayloadLength(rtpPaket.payload, payload);
+		}
+		return payload;
+	}
+
+	public List<Integer> getSeqNr(int nr) {
+		List<Integer> SeqNumber = new ArrayList<>();
+		for (int i = SequenceNumber - k; i <= SequenceNumber; i++) {
+			if (i != nr) {
+				SeqNumber.add(i);
 			}
 		}
-		counter++;
+		return SeqNumber;
 	}
 
-	// holt FEC-Paket (Länge -> längstes Medienpaket) int
-	int getdata(byte[] data) {
-		for (int i = 0; i < HEADER_SIZE; i++)
-			data[i] = header[i];
-		for (int i = 0; i < payload_size; i++)
-			data[i + HEADER_SIZE] = payload[i];
+	public byte[] getFecPacket() {
+		byte[] fec_packet;
+		int total_length = RTP_header.length + FEC_Header.length + payloadSize;
+		fec_packet = new byte[total_length];
 
-		// counter reset
-		counter = 0;
-		// nach aufarbeiten des Rückgabewertes FEC_Package und FEC_TempPackage 0
-		// initialisieren
-		FEC_Package = new byte[0];
-		FEC_TempPackage = new byte[0];
+		System.arraycopy(RTP_header, 0, fec_packet, 0, RTP_header.length);
+		System.arraycopy(FEC_Header, 0, fec_packet, RTP_header.length, FEC_Header.length);
+		System.arraycopy(payload, 0, fec_packet, (RTP_header.length + FEC_Header.length), payloadSize);
 
-		return (payload_size + HEADER_SIZE);
+		return fec_packet;
 	}
 
-	// #######################################################
-	// Empfänger
-	// getrennete Puffer für Mediendaten und FEC
-	// Puffergröße sollte Vielfaches der Gruppengröße sein
-	// #######################################################
-
-	// UDP-Payload, Nr. des Bildes bzw. TRP-SN
-	void rcvdata(int nr, byte[] data) {
-		Client.rtpBuffer.add(data);
-		Client.rtpBufferCount.add(nr);
-	}
-
-	// FEC-Daten
-	void rcvfec(int nr, byte[] data) {
-		Client.fecBuffer.add(data);
-		Client.fecBufferCount.add(nr);
-	}
-
-	// übergibt korrigiertes Paket oder Fehler (null)
-	byte[] getjpg(int nr) {
-		// else return rtpbuffer wo rtpbuffercount wert = nr
-		byte[] rebuild = null;
-		byte[] rebuildTemp = null;
-		byte[] result = null;
-
-		// if (Client.fecBuffer.isEmpty()) {
-		//
-		// }
-
-		// // else if(){}
-		// else {
-		int i = 0;
-		for (int a : Client.rtpBufferCount) {
-			if (a == nr) {
-				System.out.println("Bildnummer:" + a);
-				return Client.rtpBuffer.get(i);
-			}
-			i++;
+	public boolean inRange(int index) {
+		if (index <= SequenceNumber && index > SequenceNumber - k) {
+			return true;
 		}
-		System.out.println("havent found it");
-		// not found? reconstruct paket
-
-		for (int j = 0; j < FEC_group; j++) {
-			int size = Client.rtpBuffer.get(SequenceNumber + j).length;
-			rebuild = new byte[size];
-			int size2 = Client.rtpBuffer.get(SequenceNumber + j + 1).length;
-			rebuildTemp = new byte[size2];
-
-			int k = 0; // for each byte in the byte array
-			rebuild = Client.rtpBuffer.get(j);
-			rebuildTemp = Client.rtpBuffer.get(j + 1);
-			for (byte b : rebuild) {
-				rebuild[k] = (byte) (b ^ rebuildTemp[k]);
-				k++;
-			}
-		}
-		return rebuild;
-	/*	byte[] arr = new byte[payload_size];
-		if (FEC_Package == arr) {
-			return null;
-		} else {
-			return FEC_Package;
-		}
-		*/
+		return false;
 	}
-	
-	// helper
-	public int getLength() {
-		return (payload_size + HEADER_SIZE);
+
+	// return the unsigned value of 8-bit integer 
+	static int getInt(int nr) {
+		if (nr >= 0) {
+			return (nr);
+		}
+		else {
+			return (256 + nr);
+		}
+	}
+
+	public FECpacket(Interface sender) {
+		this.sender = sender;
+	}
+
+	// Store RTP-Packets
+	void setdata(int nr, RTPpacket data) {
+		fecBuffer.add(data);
+		if (fecBuffer.size() >= nr) {
+			@SuppressWarnings("unused")
+			FECpacket fec_packet = new FECpacket(fecBuffer);
+			fecBuffer.clear();
+		}
 	}
 }
-
-/*
- * extra head am anfang gruppengröße in erstes bit
- * 
- * xor aus allen gruppenmitgliedern
- * 
- * payload 127
- * 
- * 
- */

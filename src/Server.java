@@ -1,44 +1,33 @@
+/**
+ * Server
+ * usage: java Server [RTSP listening port]
+ */
 
-/* ------------------
-   Server
-   usage: java Server [RTSP listening port]
-   ---------------------- */
-
-import java.io.*;
-import java.net.*;
-import java.awt.*;
-import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
-import java.awt.event.*;
 import javax.swing.*;
-import javax.swing.Timer;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.io.*;
+import java.net.*;
+import java.util.StringTokenizer;
+import java.util.concurrent.ThreadLocalRandom;
 
-public class Server extends JFrame implements ActionListener {
+public class Server extends JFrame implements ActionListener, Interface {
 
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
+	private static final long serialVersionUID = 9827516272432497L;
 	// RTP variables:
 	// ----------------
 	DatagramSocket RTPsocket; // socket to be used to send and receive UDP
 								// packets
 	DatagramPacket senddp; // UDP packet containing the video frames
-
 	InetAddress ClientIPAddr; // Client IP address
-	int RTP_dest_port = 0; // destination port for RTP packets (given by the
-							// RTSP Client)
+	int RTP_dest_port = 0; // destination port for RTP packets (given by the RTSP
+							// Client)
 
-	// Slider values
-	static final int LOSS_MIN = 0;
-	static final int LOSS_MAX = 100;
-	static final int LOSS_INIT = 0;
-
-	static final int XOR_MIN = 2;
-	static final int XOR_MAX = 20;
-	static final int XOR_INIT = 2;
 	// GUI:
 	// ----------------
 	JPanel sliderPanel = new JPanel();
@@ -46,6 +35,18 @@ public class Server extends JFrame implements ActionListener {
 	JSlider xorSlider = new JSlider(XOR_MIN, XOR_MAX, XOR_INIT);
 	JLabel label;
 	JLabel serverConfig;
+
+	// Slidervariables
+	static final int XOR_MIN = 2;
+	static final int XOR_MAX = 20;
+	static final int XOR_INIT = 2;
+
+	static final int LOSS_MIN = 0;
+	static final int LOSS_MAX = 100;
+	static final int LOSS_INIT = 0;
+
+	// FEC Buffer:
+	FECpacket fecBuffer = new FECpacket(this);
 
 	// Package Lost
 	private static int LOSS_RATE = 0;
@@ -66,8 +67,8 @@ public class Server extends JFrame implements ActionListener {
 	byte[] curImage; // buffer used to store the images to send to the client
 
 	// RTSP variables
-	// ----------------
-	// rtsp states
+	// --------------
+	// Rtsp states
 	final static int INIT = 0;
 	final static int READY = 1;
 	final static int PLAYING = 2;
@@ -76,11 +77,13 @@ public class Server extends JFrame implements ActionListener {
 	final static int PLAY = 4;
 	final static int PAUSE = 5;
 	final static int TEARDOWN = 6;
-	final static int OPTIONS = 7; // added
+	final static int OPTIONS = 7;
 
-	static int state; // RTSP Server state == INIT or READY or PLAY
+	static int STATE; // RTSP Server STATE == INIT or READY or PLAY
 	Socket RTSPsocket; // socket used to send/receive RTSP messages
-	// input and output stream filters
+
+	// Input and output stream filters
+	// --------------------------------
 	static BufferedReader RTSPBufferedReader;
 	static BufferedWriter RTSPBufferedWriter;
 	static String VideoFileName; // video file requested from the client
@@ -92,10 +95,11 @@ public class Server extends JFrame implements ActionListener {
 	// --------------------------------
 	// Constructor
 	// --------------------------------
-	public Server() {
 
+	public Server() {
 		// init Frame
 		super("Server");
+		setSize(300, 170);
 
 		// init Timer
 		timer = new Timer(FRAME_PERIOD, this);
@@ -115,16 +119,16 @@ public class Server extends JFrame implements ActionListener {
 		});
 
 		// GUI:
-		label = new JLabel("Send frame #        ", JLabel.CENTER);
+		label = new JLabel("Send frame #", JLabel.CENTER);
 		getContentPane().add(label, BorderLayout.CENTER);
 
 		lossSlider.setMajorTickSpacing(20);
-		lossSlider.setMinorTickSpacing(1);
+		lossSlider.setMinorTickSpacing(10);
 		lossSlider.setPaintTicks(true);
 		lossSlider.setPaintLabels(true);
 		lossSlider.addChangeListener(new SliderListener());
 
-		xorSlider.setMajorTickSpacing(2);
+		xorSlider.setMajorTickSpacing(3);
 		xorSlider.setMinorTickSpacing(1);
 		xorSlider.setPaintTicks(true);
 		xorSlider.setPaintLabels(true);
@@ -138,7 +142,6 @@ public class Server extends JFrame implements ActionListener {
 		sliderPanel.add(xorSlider, BorderLayout.CENTER);
 		getContentPane().add(sliderPanel, BorderLayout.SOUTH);
 		getContentPane().setPreferredSize(new Dimension(300, 150));
-
 	}
 
 	// ------------------------------------
@@ -149,7 +152,8 @@ public class Server extends JFrame implements ActionListener {
 		Server theServer = new Server();
 
 		// show GUI:
-		theServer.pack();
+
+		// theServer.pack();
 		theServer.setVisible(true);
 
 		// get RTSP socket port from the command line
@@ -164,7 +168,7 @@ public class Server extends JFrame implements ActionListener {
 		theServer.ClientIPAddr = theServer.RTSPsocket.getInetAddress();
 
 		// Initiate RTSPstate
-		state = INIT;
+		STATE = INIT;
 
 		// Set input and output stream filters:
 		RTSPBufferedReader = new BufferedReader(new InputStreamReader(theServer.RTSPsocket.getInputStream()));
@@ -173,48 +177,44 @@ public class Server extends JFrame implements ActionListener {
 		// Wait for the SETUP message from the client
 		int request_type;
 		boolean done = false;
-		while (!done) {
-			request_type = theServer.parse_RTSP_request(); // blocking
 
+		while (!done) {
+			request_type = theServer.parse_RTSP_request();
 			if (request_type == SETUP) {
 				done = true;
-
-				// update RTSP state
-				state = READY;
-				System.out.println("New RTSP state: READY");
-
+				// update RTSP STATE
+				STATE = READY;
+				System.out.println("New RTSP STATE: READY");
 				// Send response
 				theServer.send_RTSP_response("");
-
 				// init the VideoStream object:
 				theServer.video = new VideoStream(VideoFileName);
-
 				// init RTP socket
 				theServer.RTPsocket = new DatagramSocket();
+				theServer.RTPsocket.setSoTimeout(5);
 			}
 		}
 
 		// loop to handle RTSP requests
 		while (true) {
 			// parse the request
-			request_type = theServer.parse_RTSP_request(); // blocking
-
-			if ((request_type == PLAY) && (state == READY)) {
+			request_type = theServer.parse_RTSP_request();
+			if ((request_type == PLAY) && (STATE == READY)) {
 				// send back response
 				theServer.send_RTSP_response("");
 				// start timer
 				theServer.timer.start();
-				// update state
-				state = PLAYING;
-				System.out.println("New RTSP state: PLAYING");
-			} else if ((request_type == PAUSE) && (state == PLAYING)) {
+				// update STATE
+				STATE = PLAYING;
+				System.out.println("New RTSP STATE: PLAYING");
+			} else if ((request_type == PAUSE) && (STATE == PLAYING)) {
 				// send back response
 				theServer.send_RTSP_response("");
 				// stop timer
 				theServer.timer.stop();
-				// update state
-				state = READY;
-				System.out.println("New RTSP state: READY");
+				// update STATE
+				STATE = READY;
+				System.out.println("New RTSP STATE: READY");
 			} else if (request_type == TEARDOWN) {
 				// send back response
 				theServer.send_RTSP_response("");
@@ -223,12 +223,10 @@ public class Server extends JFrame implements ActionListener {
 				// close sockets
 				theServer.RTSPsocket.close();
 				theServer.RTPsocket.close();
-
 				System.exit(0);
-			} else if ((request_type == OPTIONS)) { // added
-				// send back response
+			} else if (request_type == OPTIONS) {
 				theServer.send_RTSP_response("OPTIONS");
-			}
+			} 
 		}
 	}
 
@@ -236,10 +234,10 @@ public class Server extends JFrame implements ActionListener {
 	// Handler for timer
 	// ------------------------
 	public void actionPerformed(ActionEvent e) {
-
 		// if the current image nb is less than the length of the video
 		if (imgNumber < VIDEO_LENGTH) {
-			// update current imagenb
+
+			// update current imageNumb
 			imgNumber++;
 
 			try {
@@ -256,41 +254,30 @@ public class Server extends JFrame implements ActionListener {
 				// retrieve the packet bitstream and store it in an array of
 				// bytes
 				byte[] packet_bits = new byte[packet_length];
-				rtp_packet.getpacket(packet_bits);
+				rtp_packet.getpayloadSize(packet_bits);
+				
+				// send the packet as a DatagramPacket over the UDP socket
+				senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
 
 				// Package loss
-				senddp = new DatagramPacket(packet_bits, packet_length, ClientIPAddr, RTP_dest_port);
 				if (ThreadLocalRandom.current().nextInt(LOSS_MIN, LOSS_MAX + 1) > LOSS_RATE) {
-					// send the packet as a DatagramPacket over the UDP socket
-
 					RTPsocket.send(senddp);
-					System.out.println("sende RTP Paket");
-				} // Package loss end
-
-				FECpacket fec_pkg = new FECpacket(GROUP_SIZE, imgNumber);
-
-				if (groupSize < GROUP_SIZE) {
-					fec_pkg.setdata(curImage, image_length);
-					groupSize++;
+					System.out.println("Send Frame: " + imgNumber);
 				} else {
-					int FECPackage_length = fec_pkg.getLength();
-					byte[] fecPackagePlusHeader = new byte[FECPackage_length];
-					fec_pkg.getdata(fecPackagePlusHeader);
-					System.out.println("sende FEC Paket");
-					senddp = new DatagramPacket(fecPackagePlusHeader, FECPackage_length, ClientIPAddr, RTP_dest_port);
-					RTPsocket.send(senddp);
-					groupSize = 0;
+					System.out.println("Lost Frame: " + imgNumber);
 				}
+				// Package loss end				
 
-				System.out.println("Send frame #" + imgNumber);
+				// Store Packets for FEC Calculation with Groupsize and send them to Client
+				fecBuffer.setdata(xorSlider.getValue(), rtp_packet);
 
 				// print the header bitstream
 				rtp_packet.printheader();
 
 				// update GUI
-				label.setText("Send frame #" + imgNumber);
+				label.setText("Send frame: " + imgNumber);
 			} catch (Exception ex) {
-				System.out.println("actionPerformed Exception caught: " + ex);
+				System.out.println("Exception caught: " + ex);
 				ex.printStackTrace();
 				System.exit(0);
 			}
@@ -304,6 +291,7 @@ public class Server extends JFrame implements ActionListener {
 	// Parse RTSP Request
 	// ------------------------------------
 	private int parse_RTSP_request() {
+
 		int request_type = -1;
 		try {
 			// parse request line and extract the request_type:
@@ -323,11 +311,11 @@ public class Server extends JFrame implements ActionListener {
 				request_type = PAUSE;
 			else if ((new String(request_type_string)).compareTo("TEARDOWN") == 0)
 				request_type = TEARDOWN;
-			else if ((new String(request_type_string)).compareTo("OPTIONS") == 0) // added
+			else if ((new String(request_type_string)).compareTo("OPTIONS") == 0)
 				request_type = OPTIONS;
 
 			if (request_type == SETUP) {
-				// extract VideoFileName from RequestLine
+				// extract VIDEO_FILE_NAME from RequestLine
 				VideoFileName = tokens.nextToken();
 			}
 
@@ -342,19 +330,21 @@ public class Server extends JFrame implements ActionListener {
 			String LastLine = RTSPBufferedReader.readLine();
 			System.out.println(LastLine);
 
-			tokens = new StringTokenizer(LastLine);
 			if (request_type == SETUP) {
-				// extract RTP_dest_port from LastLine
+				// extract rtpDestPort from LastLine
 				tokens = new StringTokenizer(LastLine);
 				for (int i = 0; i < 3; i++)
 					tokens.nextToken(); // skip unused stuff
 				RTP_dest_port = Integer.parseInt(tokens.nextToken());
 			}
-
+			// else LastLine will be the SessionId line ... do not check for
+			// now.
 		} catch (Exception ex) {
-			System.out.println("parse_RTSP_request Exception caught: " + ex);
+			System.out.println("Exception caught: " + ex);
+			ex.printStackTrace();
 			System.exit(0);
 		}
+
 		return (request_type);
 	}
 
@@ -372,9 +362,10 @@ public class Server extends JFrame implements ActionListener {
 			}
 
 			RTSPBufferedWriter.flush();
-			// System.out.println("RTSP Server - Sent response to Client.");
+			System.out.println("RTSP Server - Sent response to Client.");
 		} catch (Exception ex) {
 			System.out.println("send_RTSP_response Exception caught: " + ex);
+			ex.printStackTrace();
 			System.exit(0);
 		}
 	}
@@ -390,5 +381,11 @@ public class Server extends JFrame implements ActionListener {
 				serverConfig.setText("loss rate: [" + LOSS_RATE + "]     XOR group size: [" + GROUP_SIZE + "]");
 			}
 		}
+	}
+	
+	// Send Packet GrupSize
+	public void sendPacketByte(byte[] data) throws IOException {
+		RTPsocket.send(senddp);
+		System.out.println("Send FEC Frame: " + imgNumber);
 	}
 }
