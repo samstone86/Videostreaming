@@ -1,7 +1,7 @@
-/**
- * Server
- * usage: java Server [RTSP listening port]
- */
+/*
+ Server
+ usage: java Server [RTSP listening port]
+*/
 
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
@@ -261,15 +261,17 @@ public class Server extends JFrame implements ActionListener, Interface {
 
 				// Package loss
 				if (ThreadLocalRandom.current().nextInt(LOSS_MIN, LOSS_MAX + 1) > LOSS_RATE) {
+					fecBuffer.setdata(GROUP_SIZE, rtp_packet);
 					RTPsocket.send(senddp);
 					System.out.println("Send Frame: " + imgNumber);
 				} else {
+					// change RTP Header Payload Typte and store Packet in fecBuffer
+					RTPpacket.getHeader(127, rtp_packet.getsequencenumber(),rtp_packet.gettimestamp());					
+					System.out.println("NEW: " + rtp_packet.getpayloadtype());
+					fecBuffer.setdata(GROUP_SIZE, rtp_packet);
 					System.out.println("Lost Frame: " + imgNumber);
 				}
 				// Package loss end				
-
-				// Store Packets for FEC Calculation with Groupsize and send them to Client
-				fecBuffer.setdata(xorSlider.getValue(), rtp_packet);
 
 				// print the header bitstream
 				rtp_packet.printheader();
@@ -331,7 +333,7 @@ public class Server extends JFrame implements ActionListener, Interface {
 			System.out.println(LastLine);
 
 			if (request_type == SETUP) {
-				// extract rtpDestPort from LastLine
+				// extract RTP_dest_port from LastLine
 				tokens = new StringTokenizer(LastLine);
 				for (int i = 0; i < 3; i++)
 					tokens.nextToken(); // skip unused stuff

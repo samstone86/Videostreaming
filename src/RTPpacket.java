@@ -1,3 +1,7 @@
+/*
+ RTPpacket Class
+*/
+
 import java.util.Arrays;
 
 public class RTPpacket {
@@ -71,34 +75,37 @@ public class RTPpacket {
 		// constructor)
 		payload = Arrays.copyOf(data, payload_size);
 	}
+	public byte[] setPayloadType(int payload_type) {
+		header[1] = (byte) (header[1] | payload_type);
+		return header;		
+	}
 
 	public static byte[] getHeader(int payload_type, int seqNr, int timestamp) {
-
 		// build the header bistream:
 		// --------------------------
 		byte[] header = new byte[HEADER_SIZE];
 
 		// is bit set check with HEX value
-		header[0] = (byte) ((Version & 0x03) << (7 - 1));
-		header[0] = (byte) (header[0] | (Padding & 0x01) << (7 - 2));
-		header[0] = (byte) (header[0] | (Extension & 0x01) << (7 - 3));
+		header[0] = (byte) (Version << (7 - 1));
+		header[0] = (byte) (header[0] | Padding << (7 - 2));
+		header[0] = (byte) (header[0] | Extension << (7 - 3));
 		header[0] = (byte) (header[0] | CC);
 
-		header[1] = (byte) (Marker & 0x1 << 7);
-		header[1] = (byte) (header[1] | (payload_type & 0x7f));
+		header[1] = (byte) (Marker << 7);
+		header[1] = (byte) (header[1] | payload_type);
 
-		header[2] = (byte) ((seqNr & 0xff00) >> 8);
-		header[3] = (byte) (seqNr & 0x00ff);
+		header[2] = (byte) (seqNr >> 8);
+		header[3] = (byte) (seqNr & 0xFF);
 
-		header[4] = (byte) ((timestamp & 0xff000000) >> 24);
-		header[5] = (byte) ((timestamp & 0x00ff0000) >> 16);
-		header[6] = (byte) ((timestamp & 0x0000ff00) >> 8);
-		header[7] = (byte) (timestamp & 0x000000ff);
+		header[4] = (byte) (timestamp >> 24);
+		header[5] = (byte) (timestamp >> 16);
+		header[6] = (byte) (timestamp >> 8);
+		header[7] = (byte) (timestamp & 0xFF);
 
-		header[8] = (byte) ((Ssrc & 0xff000000) >> 24);
-		header[9] = (byte) ((Ssrc & 0x00ff0000) >> 16);
-		header[10] = (byte) ((Ssrc & 0x0000ff00) >> 8);
-		header[11] = (byte) (Ssrc & 0x000000ff);
+		header[8] = (byte) (Ssrc >> 24);
+		header[9] = (byte) (Ssrc >> 16);
+		header[10] = (byte) (Ssrc >> 8);
+		header[11] = (byte) Ssrc;
 
 		return header;
 	}

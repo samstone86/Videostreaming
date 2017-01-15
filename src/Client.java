@@ -1,7 +1,7 @@
-/**
- * Client
- * usage: java Client [Server hostname] [Server RTSP listening port] [Video file requested]
- */
+/*
+ Client
+ usage: java Client [Server hostname] [Server RTSP listening port] [Video file requested]
+*/
 
 import javax.swing.*;
 import java.awt.*;
@@ -190,7 +190,7 @@ public class Client {
 			System.out.println("Setup Button pressed !");
 
 			if (state == INIT) {
-				// Init non-blocking rtpSocket that will be used to receive data
+				// Init non-blocking RTPsocket that will be used to receive data
 				try {
 					// construct a new DatagramSocket to receive RTP packets from the server on port RTP_RCV_PORT
 					RTPsocket = new DatagramSocket(RTP_RCV_PORT);
@@ -332,12 +332,12 @@ public class Client {
 		public void actionPerformed(ActionEvent e) {
 			if (rtpBuffer.size() == 0) return;
 
-			RTPpacket imagePacket = rtpBuffer.get(0);
-
+			RTPpacket image_packet = rtpBuffer.get(0);
+			
 			// get the payload bitstream from the RTPpacket object
-			int payload_length = imagePacket.getpayload_length();
+			int payload_length = image_packet.getpayload_length();
 			byte[] payload = new byte[payload_length];
-			imagePacket.getpayload(payload);
+			image_packet.getpayload(payload);
 
 			// get an Image object from the payload bitstream
 			Toolkit toolkit = Toolkit.getDefaultToolkit();
@@ -359,77 +359,81 @@ public class Client {
 				// receive the DP from the socket:
 				RTPsocket.receive(rcvdp);
 				// create an RTPpacket object from the DP
-				RTPpacket rtpPacket = new RTPpacket(rcvdp.getData(), rcvdp.getLength());
+				RTPpacket rtp_packet = new RTPpacket(rcvdp.getData(), rcvdp.getLength());
 				// print important header fields of the RTP packet received:
-				System.out.println("Got RTP packet with SeqNum # " + rtpPacket.getsequencenumber() + " timeStamp "
-						+ rtpPacket.gettimestamp() + " ms, of type " + rtpPacket.getpayloadtype());
+				System.out.println("Got RTP packet with SeqNum # " + rtp_packet.getsequencenumber() + " timeStamp "
+						+ rtp_packet.gettimestamp() + " ms, of type " + rtp_packet.getpayloadtype());
 				// print header bitstream:
-				rtpPacket.printheader();
+				rtp_packet.printheader();
 				// get the payload bitstream from the RTPpacket object
-				int payload_length = rtpPacket.getpayload_length();
+				int payload_length = rtp_packet.getpayload_length();
 				byte[] payload = new byte[payload_length];
-				rtpPacket.getpayload(payload);
-
+				rtp_packet.getpayload(payload);
+				
 				// Statistics
-				if (rtpPacket.getsequencenumber() == SEQ_PastNr + 1) {
+				if (rtp_packet.getsequencenumber() == SEQ_PastNr + 1) {
 					PackageCounter++;
 				} else {
-					LostPackage += (rtpPacket.getsequencenumber() - SEQ_PastNr - 1);
+					LostPackage = LostPackage + (rtp_packet.getsequencenumber() - SEQ_PastNr - 1);
 					LostPackage++;
 				}
-				SEQ_PastNr = rtpPacket.getsequencenumber();
-				DR = (PackageCounter / (double) rtpPacket.gettimestamp()) * 1000;
-				LossRate = (LostPackage / (double) rtpPacket.gettimestamp()) * 1000;
+				SEQ_PastNr = rtp_packet.getsequencenumber();
+				DR = (PackageCounter / (double) rtp_packet.gettimestamp()) * 1000;
+				LossRate = (LostPackage / (double) rtp_packet.gettimestamp()) * 1000;
 				PercentLossRate = (LostPackage * 100) / (PackageCounter + LostPackage);
 
 				// FEC Error Correction
-				if (rtpPacket.getpayloadtype() == FECpacket.PayloadType) {
-					// Parse RTP Packet
-					FECpacket fecPacket = new FECpacket(rtpPacket.getpayload());
+				if (rtp_packet.getpayloadtype() == 127) {
+					// FEC Packet
+					System.out.println("Enter Error Correction");
+					FECpacket fec_packet = new FECpacket(rtp_packet.getpayload());
 
-					// Is Lostpacket in Range aof FEC Packet and can we restore it?
+					// Is LOST_Packages in Range of FEC packet and is it restoreable
 					for (int i = 0; i < rtpBufferLost.size(); i++) {
 						LOST_PackagesCount = rtpBufferLost.get(i);
 						// is Packet in Range of FECGroup
-						if (fecPacket.inRange(LOST_PackagesCount)) {
+						if (fec_packet.inRange(LOST_PackagesCount)) {
 							LOST_Packages++;
 						}
 					}
+					System.out.println(LOST_Packages);
 					if (LOST_Packages > 1) {
 						System.out.println("Konnte Packet nicht wiederherstellen.\nMehrere Packete fehlen im FEC-Packet");
 					}
 					// Restore
 					if (LOST_Packages == 1) {
-						fecImgBuffer = fecPacket.getSeqNr(LOST_PackagesCount);
-						for (int fecImgNr : fecImgBuffer) {
+						fecImgBuffer = fec_packet.getSeqNr(LOST_PackagesCount);
+						for (int fec_ImgNr : fecImgBuffer) {
 							for (RTPpacket rtp : rtpBuffer) {
-								if (rtp.SequenceNumber == fecImgNr) {
+								System.out.println("SEQ: " + rtp.SequenceNumber);
+								System.out.println("SEQ2: " + rtp.getsequencenumber());
+								if (rtp.SequenceNumber == fec_ImgNr) {
 									fecBuffer.add(rtp);
 								}
 							}
 						}
 
-						byte[] restoredPayload = FECpacket.getPayloadLength(fecPacket.payload, new byte[0]);
+						byte[] restored_payload = FECpacket.getnewPayload(fec_packet.payload, new byte[0]);
 						if (fecBuffer.size() == fecImgBuffer.size()) {
 							for (RTPpacket packet : fecBuffer) {
-								restoredPayload = FECpacket.getPayloadLength(restoredPayload, packet.payload);
+								restored_payload = FECpacket.getnewPayload(restored_payload, packet.payload);
 							}
 						}
 
-						// add restored Packet to to List that display them
-						RTPpacket recoverPacket = new RTPpacket(0, LOST_PackagesCount, 0, restoredPayload, restoredPayload.length);
+						// add restored packet to List for display
+						RTPpacket recover_packet = new RTPpacket(0, LOST_PackagesCount, 0, restored_payload, restored_payload.length);
 						for (int i = 0; i < rtpBuffer.size(); i++) {
 							if (LOST_PackagesCount > rtpBuffer.get(i).SequenceNumber && LOST_PackagesCount < rtpBuffer.get(i + 1).SequenceNumber) {
-								rtpBuffer.add(i + 1, recoverPacket);
+								rtpBuffer.add(i + 1, recover_packet);
 							}
 						}
 					}
 				}
 
 				// Storage to Display them in timerListener
-				rtpBuffer.add(rtpPacket);
+				rtpBuffer.add(rtp_packet);
 
-				FEC_Number = rtpPacket.getsequencenumber();
+				FEC_Number = rtp_packet.getsequencenumber();
 				if (FEC_Number != FEC_PastNumber + 1) {
 					// Store index of packetslost
 					rtpBufferLost.add(FEC_PastNumber + 1);
